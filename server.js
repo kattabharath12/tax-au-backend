@@ -18,7 +18,7 @@ connectDB();
 
 // Routes
 app.use('/api/auth', require('./routes/auth'));
-app.use('/api/user', require('./routes/dashboard'));
+app.use('/api/dashboard', require('./routes/dashboard'));
 
 // Health check route
 app.get('/', (req, res) => {
