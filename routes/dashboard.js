@@ -674,7 +674,7 @@ router.get('/1098-data', auth, async (req, res) => {
     }
 });
 
-    } catch (error) {
+     catch (error) {
         console.error('Get 1098 data error:', error);
         res.status(500).json({
             success: false,
