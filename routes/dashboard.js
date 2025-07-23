@@ -6,6 +6,7 @@ const { body, validationResult } = require('express-validator');
 const User = require('../models/User');
 const Dependent = require('../models/Dependent');
 const auth = require('../middleware/auth');
+const PDFDocument = require('pdfkit');
 
 const router = express.Router();
 
@@ -354,7 +355,7 @@ router.post('/upload-w2', auth, uploadW2.single('w2Form'), async (req, res) => {
     }
 });
 
-// Extract W-2 data (POST /api/dashboard/extract-w2) - NEW
+// Extract W-2 data (POST /api/dashboard/extract-w2)
 router.post('/extract-w2', auth, async (req, res) => {
     try {
         const user = await User.findByPk(req.user.userId);
@@ -456,7 +457,7 @@ router.post('/extract-w2', auth, async (req, res) => {
     }
 });
 
-// Get extracted W-2 data (GET /api/dashboard/w2-data) - NEW
+// Get extracted W-2 data (GET /api/dashboard/w2-data)
 router.get('/w2-data', auth, async (req, res) => {
     try {
         const user = await User.findByPk(req.user.userId);
@@ -490,7 +491,7 @@ router.get('/w2-data', auth, async (req, res) => {
     }
 });
 
-// Update extracted W-2 data (PUT /api/dashboard/w2-data) - NEW
+// Update extracted W-2 data (PUT /api/dashboard/w2-data)
 router.put('/w2-data', auth, [
     body('box1_wages').optional().isNumeric(),
     body('box2_federalTax').optional().isNumeric(),
@@ -548,6 +549,296 @@ router.put('/w2-data', auth, [
         res.status(500).json({
             success: false,
             message: 'Server error updating W-2 data'
+        });
+    }
+});
+
+// Generate 1098 data (POST /api/dashboard/generate-1098) - NEW
+router.post('/generate-1098', auth, async (req, res) => {
+    try {
+        const user = await User.findByPk(req.user.userId);
+        if (!user || !user.income?.w2Data) {
+            return res.status(404).json({
+                success: false,
+                message: 'No W-2 data found. Please extract W-2 data first.'
+            });
+        }
+
+        // Get W-2 data for calculations
+        const w2Data = user.income.w2Data;
+
+        // Calculate mortgage interest based on income (this is a simplified example)
+        // In reality, this would come from actual mortgage documents or user input
+        const estimatedMortgageInterest = Math.min(w2Data.box1_wages * 0.04, 10000); // 4% of wages, max $10k
+
+        // Generate 1098 data using W-2 information and user profile
+        const form1098 = {
+            // Borrower Information (from user profile and W-2)
+            borrowerName: w2Data.employeeName || (user.firstName + ' ' + user.lastName),
+            borrowerSSN: w2Data.employeeSSN || user.ssn || '123-45-6789',
+            borrowerAddress: w2Data.employeeAddress || user.address || {
+                street: '123 Main St',
+                city: 'Anytown',
+                state: 'CA',
+                zip: '12345'
+            },
+
+            // Lender Information (mocked)
+            lenderName: 'First National Mortgage Bank',
+            lenderTIN: '98-7654321',
+            lenderAddress: {
+                street: '789 Finance Blvd',
+                city: 'Banking City',
+                state: 'NY',
+                zip: '10001'
+            },
+
+            // 1098 Form Data
+            mortgageInterestReceived: estimatedMortgageInterest, // Box 1
+            pointsPaid: 0.00, // Box 2
+            refundOfOverpaidInterest: 0.00, // Box 3
+            mortgageInsurancePremiums: w2Data.box1_wages * 0.005, // Box 4 - 0.5% of wages
+            outstandingMortgagePrincipal: w2Data.box1_wages * 3.5, // Box 5 - estimated based on income
+
+            // Property Information
+            propertyAddress: w2Data.employeeAddress || user.address || {
+                street: '123 Main St',
+                city: 'Anytown',
+                state: 'CA',
+                zip: '12345'
+            },
+
+            // Form Metadata
+            formYear: new Date().getFullYear(),
+            generatedDate: new Date(),
+            accountNumber: 'MTG-' + user.id.substring(0, 8).toUpperCase(),
+
+            // Calculation Details (for reference)
+            calculationBasis: {
+                basedOnW2Income: w2Data.box1_wages,
+                interestRate: 0.04, // 4% assumed rate
+                estimationMethod: 'income_based'
+            }
+        };
+
+        // Store 1098 data in user record
+        await user.update({
+            deductions: {
+                ...user.deductions,
+                form1098: form1098,
+                last1098Generation: new Date()
+            }
+        });
+
+        res.json({
+            success: true,
+            message: '1098 form data generated successfully',
+            data: form1098,
+            generatedDate: new Date()
+        });
+
+    } catch (error) {
+        console.error('1098 generation error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error during 1098 generation',
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+});
+
+// Get 1098 data (GET /api/dashboard/1098-data) - NEW
+router.get('/1098-data', auth, async (req, res) => {
+    try {
+        const user = await User.findByPk(req.user.userId);
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        const form1098 = user.deductions?.form1098;
+        if (!form1098) {
+            return res.status(404).json({
+                success: false,
+                message: 'No 1098 data found. Please generate 1098 form first.'
+            });
+        }
+
+        res.json({
+            success: true,
+            data: form1098,
+            lastGeneration: user.deductions?.last1098Generation
+        });
+
+    } catch (error) {
+        console.error('Get 1098 data error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error retrieving 1098 data'
+        });
+    }
+});
+
+// Update 1098 data (PUT /api/dashboard/1098-data) - NEW
+router.put('/1098-data', auth, [
+    body('mortgageInterestReceived').optional().isNumeric(),
+    body('pointsPaid').optional().isNumeric(),
+    body('mortgageInsurancePremiums').optional().isNumeric(),
+    body('lenderName').optional().trim(),
+    // Add more validation as needed
+], async (req, res) => {
+    try {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({
+                success: false,
+                message: 'Validation failed',
+                errors: errors.array()
+            });
+        }
+
+        const user = await User.findByPk(req.user.userId);
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        const current1098Data = user.deductions?.form1098;
+        if (!current1098Data) {
+            return res.status(404).json({
+                success: false,
+                message: 'No 1098 data found to update. Please generate 1098 form first.'
+            });
+        }
+
+        // Update 1098 data with provided fields
+        const updated1098Data = {
+            ...current1098Data,
+            ...req.body,
+            lastModified: new Date()
+        };
+
+        await user.update({
+            deductions: {
+                ...user.deductions,
+                form1098: updated1098Data
+            }
+        });
+
+        res.json({
+            success: true,
+            message: '1098 data updated successfully',
+            data: updated1098Data
+        });
+
+    } catch (error) {
+        console.error('Update 1098 data error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error updating 1098 data'
+        });
+    }
+});
+
+// Download 1098 PDF (GET /api/dashboard/download-1098) - NEW
+router.get('/download-1098', auth, async (req, res) => {
+    try {
+        const user = await User.findByPk(req.user.userId);
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        const form1098 = user.deductions?.form1098;
+        if (!form1098) {
+            return res.status(404).json({
+                success: false,
+                message: 'No 1098 data found. Please generate 1098 form first.'
+            });
+        }
+
+        // Create PDF document
+        const doc = new PDFDocument({ margin: 50 });
+
+        // Set response headers for PDF download
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="Form1098_${form1098.formYear}_${user.firstName}_${user.lastName}.pdf"`);
+
+        // Pipe the PDF to the response
+        doc.pipe(res);
+
+        // PDF Content
+        // Header
+        doc.fontSize(20).text('Form 1098', { align: 'center' });
+        doc.fontSize(16).text('Mortgage Interest Statement', { align: 'center' });
+        doc.fontSize(12).text(`Tax Year ${form1098.formYear}`, { align: 'center' });
+        doc.moveDown(2);
+
+        // Lender Information
+        doc.fontSize(14).text('LENDER INFORMATION', { underline: true });
+        doc.fontSize(11);
+        doc.text(`Name: ${form1098.lenderName}`);
+        doc.text(`TIN: ${form1098.lenderTIN}`);
+        doc.text(`Address: ${form1098.lenderAddress.street}`);
+        doc.text(`         ${form1098.lenderAddress.city}, ${form1098.lenderAddress.state} ${form1098.lenderAddress.zip}`);
+        doc.moveDown();
+
+        // Borrower Information
+        doc.fontSize(14).text('BORROWER INFORMATION', { underline: true });
+        doc.fontSize(11);
+        doc.text(`Name: ${form1098.borrowerName}`);
+        doc.text(`SSN: ${form1098.borrowerSSN}`);
+        doc.text(`Address: ${form1098.borrowerAddress.street}`);
+        doc.text(`         ${form1098.borrowerAddress.city}, ${form1098.borrowerAddress.state} ${form1098.borrowerAddress.zip}`);
+        doc.moveDown();
+
+        // Property Information
+        doc.fontSize(14).text('PROPERTY INFORMATION', { underline: true });
+        doc.fontSize(11);
+        doc.text(`Property Address: ${form1098.propertyAddress.street}`);
+        doc.text(`                  ${form1098.propertyAddress.city}, ${form1098.propertyAddress.state} ${form1098.propertyAddress.zip}`);
+        doc.text(`Account Number: ${form1098.accountNumber}`);
+        doc.moveDown();
+
+        // Form Data
+        doc.fontSize(14).text('MORTGAGE INTEREST INFORMATION', { underline: true });
+        doc.fontSize(11);
+        doc.text(`Box 1 - Mortgage Interest Received: $${form1098.mortgageInterestReceived.toFixed(2)}`);
+        doc.text(`Box 2 - Points Paid: $${form1098.pointsPaid.toFixed(2)}`);
+        doc.text(`Box 3 - Refund of Overpaid Interest: $${form1098.refundOfOverpaidInterest.toFixed(2)}`);
+        doc.text(`Box 4 - Mortgage Insurance Premiums: $${form1098.mortgageInsurancePremiums.toFixed(2)}`);
+        doc.text(`Box 5 - Outstanding Mortgage Principal: $${form1098.outstandingMortgagePrincipal.toFixed(2)}`);
+        doc.moveDown();
+
+        // Footer
+        doc.fontSize(10);
+        doc.text(`Generated on: ${form1098.generatedDate.toLocaleDateString()}`, { align: 'right' });
+        doc.text('This is a computer-generated document.', { align: 'center' });
+
+        // Calculation details (if needed for debugging)
+        if (form1098.calculationBasis) {
+            doc.moveDown();
+            doc.fontSize(8).text('Calculation Details:', { underline: true });
+            doc.text(`Based on W-2 Income: $${form1098.calculationBasis.basedOnW2Income.toFixed(2)}`);
+            doc.text(`Estimation Method: ${form1098.calculationBasis.estimationMethod}`);
+            doc.text(`Interest Rate Used: ${(form1098.calculationBasis.interestRate * 100).toFixed(2)}%`);
+        }
+
+        // Finalize the PDF
+        doc.end();
+
+    } catch (error) {
+        console.error('Download 1098 PDF error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error generating 1098 PDF',
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
     }
 });
