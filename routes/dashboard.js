@@ -1,12 +1,11 @@
-dashboard_js_content = '''const express = require('express');
+const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { body, validationResult } = require('express-validator');
-const { Op } = require('sequelize');
 const User = require('../models/User');
 const Dependent = require('../models/Dependent');
-const auth = require('../middleware/authMiddleware');
+const auth = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -23,7 +22,7 @@ const storage = multer.diskStorage({
     },
     filename: function (req, file, cb) {
         const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, 'w9-' + req.userId + '-' + uniqueSuffix + path.extname(file.originalname));
+        cb(null, 'w9-' + req.user.userId + '-' + uniqueSuffix + path.extname(file.originalname));
     }
 });
 
@@ -48,7 +47,7 @@ const upload = multer({
 // Get user profile data (GET /api/dashboard/me)
 router.get('/me', auth, async (req, res) => {
     try {
-        const user = await User.findByPk(req.userId, {
+        const user = await User.findByPk(req.user.userId, {
             attributes: { exclude: ['password'] }
         });
 
@@ -97,7 +96,7 @@ router.put('/me', auth, [
             });
         }
 
-        const user = await User.findByPk(req.userId);
+        const user = await User.findByPk(req.user.userId);
         if (!user) {
             return res.status(404).json({
                 success: false,
@@ -140,7 +139,7 @@ router.put('/me', auth, [
 router.get('/dependents', auth, async (req, res) => {
     try {
         const dependents = await Dependent.findAll({
-            where: { userId: req.userId },
+            where: { userId: req.user.userId },
             order: [['createdAt', 'ASC']]
         });
 
@@ -175,7 +174,7 @@ router.post('/dependents', auth, [
 
         // Create new dependent
         const dependent = await Dependent.create({
-            userId: req.userId,
+            userId: req.user.userId,
             name,
             relationship,
             dob: dob ? new Date(dob) : null,
@@ -208,7 +207,7 @@ router.delete('/dependents/:id', auth, async (req, res) => {
         const dependent = await Dependent.findOne({
             where: {
                 id: req.params.id,
-                userId: req.userId
+                userId: req.user.userId
             }
         });
 
@@ -245,7 +244,7 @@ router.post('/upload-w9', auth, upload.single('w9Form'), async (req, res) => {
             });
         }
 
-        const user = await User.findByPk(req.userId);
+        const user = await User.findByPk(req.user.userId);
         if (!user) {
             return res.status(404).json({
                 success: false,
@@ -275,10 +274,3 @@ router.post('/upload-w9', auth, upload.single('w9Form'), async (req, res) => {
 });
 
 module.exports = router;
-'''
-
-# Write the file
-with open('dashboard.js', 'w') as f:
-    f.write(dashboard_js_content)
-
-print("dashboard.js file created successfully!")
