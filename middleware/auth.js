@@ -30,7 +30,10 @@ const auth = async (req, res, next) => {
         const decoded = jwt.verify(actualToken, process.env.JWT_SECRET);
 
         // Check if user still exists
-        const user = await User.findById(decoded.userId).select('-password');
+        const user = await User.findByPk(decoded.userId, {
+            attributes: { exclude: ['password'] }
+        });
+
         if (!user) {
             return res.status(401).json({
                 success: false,
