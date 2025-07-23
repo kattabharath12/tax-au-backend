@@ -1,10 +1,11 @@
-# Complete dashboard routes code
-dashboard_routes_complete = """const express = require('express');
+const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { body, validationResult } = require('express-validator');
+const { Op } = require('sequelize');
 const User = require('../models/User');
+const Dependent = require('../models/Dependent');
 const auth = require('../middleware/auth');
 
 const router = express.Router();
@@ -47,7 +48,10 @@ const upload = multer({
 // Get user dashboard data
 router.get('/dashboard', auth, async (req, res) => {
     try {
-        const user = await User.findById(req.user.userId).select('-password');
+        const user = await User.findByPk(req.user.userId, {
+            attributes: { exclude: ['password'] }
+        });
+
         if (!user) {
             return res.status(404).json({
                 success: false,
@@ -55,14 +59,34 @@ router.get('/dashboard', auth, async (req, res) => {
             });
         }
 
+        // Get user's dependents
+        const dependents = await Dependent.findAll({
+            where: { userId: req.user.userId },
+            order: [['createdAt', 'ASC']]
+        });
+
         res.json({
             success: true,
             user: {
-                id: user._id,
+                id: user.id,
                 email: user.email,
                 firstName: user.firstName,
                 lastName: user.lastName,
-                taxInfo: user.taxInfo,
+                taxInfo: {
+                    filingStatus: user.filingStatus,
+                    taxClassification: user.taxClassification,
+                    businessName: user.businessName,
+                    ssn: user.ssn,
+                    ein: user.ein,
+                    address: user.address,
+                    income: user.income,
+                    deductions: user.deductions,
+                    w9Uploaded: user.w9Uploaded,
+                    w9UploadDate: user.w9UploadDate,
+                    w9FileName: user.w9FileName,
+                    formCompletionStatus: user.formCompletionStatus,
+                    dependents: dependents
+                },
                 createdAt: user.createdAt,
                 lastLogin: user.lastLogin
             }
@@ -94,7 +118,7 @@ router.put('/tax-info', auth, [
             });
         }
 
-        const user = await User.findById(req.user.userId);
+        const user = await User.findByPk(req.user.userId);
         if (!user) {
             return res.status(404).json({
                 success: false,
@@ -110,48 +134,49 @@ router.put('/tax-info', auth, [
             ssn,
             ein,
             address,
-            dependents,
             income,
             deductions
         } = req.body;
 
-        // Initialize taxInfo if it doesn't exist
-        if (!user.taxInfo) {
-            user.taxInfo = {};
+        const updateData = {};
+
+        if (filingStatus) updateData.filingStatus = filingStatus;
+        if (taxClassification) updateData.taxClassification = taxClassification;
+        if (businessName !== undefined) updateData.businessName = businessName;
+        if (ssn !== undefined) updateData.ssn = ssn;
+        if (ein !== undefined) updateData.ein = ein;
+
+        if (address) {
+            updateData.address = { ...user.address, ...address };
         }
 
-        if (filingStatus) user.taxInfo.filingStatus = filingStatus;
-        if (taxClassification) user.taxInfo.taxClassification = taxClassification;
-        if (businessName !== undefined) user.taxInfo.businessName = businessName;
-        if (ssn !== undefined) user.taxInfo.ssn = ssn;
-        if (ein !== undefined) user.taxInfo.ein = ein;
-        
-        if (address) {
-            if (!user.taxInfo.address) user.taxInfo.address = {};
-            user.taxInfo.address = { ...user.taxInfo.address, ...address };
-        }
-        
-        if (dependents) user.taxInfo.dependents = dependents;
-        
         if (income) {
-            if (!user.taxInfo.income) user.taxInfo.income = {};
-            user.taxInfo.income = { ...user.taxInfo.income, ...income };
+            updateData.income = { ...user.income, ...income };
         }
-        
+
         if (deductions) {
-            if (!user.taxInfo.deductions) user.taxInfo.deductions = {};
-            user.taxInfo.deductions = { ...user.taxInfo.deductions, ...deductions };
+            updateData.deductions = { ...user.deductions, ...deductions };
         }
 
         // Update completion status
-        user.taxInfo.formCompletionStatus = 'in_progress';
+        updateData.formCompletionStatus = 'in_progress';
 
-        await user.save();
+        await user.update(updateData);
 
         res.json({
             success: true,
             message: 'Tax information updated successfully',
-            taxInfo: user.taxInfo
+            taxInfo: {
+                filingStatus: user.filingStatus,
+                taxClassification: user.taxClassification,
+                businessName: user.businessName,
+                ssn: user.ssn,
+                ein: user.ein,
+                address: user.address,
+                income: user.income,
+                deductions: user.deductions,
+                formCompletionStatus: user.formCompletionStatus
+            }
         });
 
     } catch (error) {
@@ -173,7 +198,7 @@ router.post('/upload-w9', auth, upload.single('w9Form'), async (req, res) => {
             });
         }
 
-        const user = await User.findById(req.user.userId);
+        const user = await User.findByPk(req.user.userId);
         if (!user) {
             return res.status(404).json({
                 success: false,
@@ -181,23 +206,19 @@ router.post('/upload-w9', auth, upload.single('w9Form'), async (req, res) => {
             });
         }
 
-        // Initialize taxInfo if it doesn't exist
-        if (!user.taxInfo) {
-            user.taxInfo = {};
-        }
-
         // Update user's W-9 upload status
-        user.taxInfo.w9Uploaded = true;
-        user.taxInfo.w9UploadDate = new Date();
-        user.taxInfo.formCompletionStatus = 'in_progress';
-
-        await user.save();
+        await user.update({
+            w9Uploaded: true,
+            w9UploadDate: new Date(),
+            w9FileName: req.file.filename,
+            formCompletionStatus: 'in_progress'
+        });
 
         res.json({
             success: true,
             message: 'W-9 form uploaded successfully',
             fileName: req.file.filename,
-            uploadDate: user.taxInfo.w9UploadDate
+            uploadDate: user.w9UploadDate
         });
 
     } catch (error) {
@@ -226,37 +247,28 @@ router.post('/add-dependent', auth, [
             });
         }
 
-        const user = await User.findById(req.user.userId);
-        if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: 'User not found'
-            });
-        }
-
         const { name, relationship, ssn, birthDate } = req.body;
 
-        // Initialize taxInfo and dependents if they don't exist
-        if (!user.taxInfo) {
-            user.taxInfo = {};
-        }
-        if (!user.taxInfo.dependents) {
-            user.taxInfo.dependents = [];
-        }
-
-        user.taxInfo.dependents.push({
+        // Create new dependent
+        const dependent = await Dependent.create({
+            userId: req.user.userId,
             name,
             relationship,
             ssn,
-            birthDate: birthDate ? new Date(birthDate) : undefined
+            birthDate: birthDate ? new Date(birthDate) : null
         });
 
-        await user.save();
+        // Get all dependents for this user
+        const dependents = await Dependent.findAll({
+            where: { userId: req.user.userId },
+            order: [['createdAt', 'ASC']]
+        });
 
         res.json({
             success: true,
             message: 'Dependent added successfully',
-            dependents: user.taxInfo.dependents
+            dependent,
+            dependents
         });
 
     } catch (error) {
@@ -271,31 +283,32 @@ router.post('/add-dependent', auth, [
 // Remove dependent
 router.delete('/remove-dependent/:dependentId', auth, async (req, res) => {
     try {
-        const user = await User.findById(req.user.userId);
-        if (!user) {
+        const dependent = await Dependent.findOne({
+            where: {
+                id: req.params.dependentId,
+                userId: req.user.userId
+            }
+        });
+
+        if (!dependent) {
             return res.status(404).json({
                 success: false,
-                message: 'User not found'
+                message: 'Dependent not found'
             });
         }
 
-        if (!user.taxInfo || !user.taxInfo.dependents) {
-            return res.status(404).json({
-                success: false,
-                message: 'No dependents found'
-            });
-        }
+        await dependent.destroy();
 
-        user.taxInfo.dependents = user.taxInfo.dependents.filter(
-            dep => dep._id.toString() !== req.params.dependentId
-        );
-
-        await user.save();
+        // Get remaining dependents
+        const dependents = await Dependent.findAll({
+            where: { userId: req.user.userId },
+            order: [['createdAt', 'ASC']]
+        });
 
         res.json({
             success: true,
             message: 'Dependent removed successfully',
-            dependents: user.taxInfo.dependents
+            dependents
         });
 
     } catch (error) {
@@ -310,7 +323,7 @@ router.delete('/remove-dependent/:dependentId', auth, async (req, res) => {
 // Get tax calculation (placeholder for future implementation)
 router.get('/calculate-tax', auth, async (req, res) => {
     try {
-        const user = await User.findById(req.user.userId);
+        const user = await User.findByPk(req.user.userId);
         if (!user) {
             return res.status(404).json({
                 success: false,
@@ -318,10 +331,15 @@ router.get('/calculate-tax', auth, async (req, res) => {
             });
         }
 
+        // Get dependents count
+        const dependentsCount = await Dependent.count({
+            where: { userId: req.user.userId }
+        });
+
         // Placeholder tax calculation logic
-        const income = user.taxInfo?.income || {};
+        const income = user.income || {};
         const totalIncome = Object.values(income).reduce((sum, val) => sum + (val || 0), 0);
-        
+
         // Simple tax calculation (this would be much more complex in reality)
         let taxOwed = 0;
         if (totalIncome > 0) {
@@ -336,10 +354,16 @@ router.get('/calculate-tax', auth, async (req, res) => {
             }
         }
 
+        // Apply dependent deductions (simplified)
+        const dependentDeduction = dependentsCount * 2000;
+        taxOwed = Math.max(0, taxOwed - dependentDeduction);
+
         res.json({
             success: true,
             calculation: {
                 totalIncome,
+                dependentsCount,
+                dependentDeduction,
                 taxOwed: Math.round(taxOwed * 100) / 100,
                 effectiveRate: totalIncome > 0 ? Math.round((taxOwed / totalIncome) * 10000) / 100 : 0
             }
@@ -355,10 +379,3 @@ router.get('/calculate-tax', auth, async (req, res) => {
 });
 
 module.exports = router;
-"""
-
-with open('dashboard_routes_complete.js', 'w') as f:
-    f.write(dashboard_routes_complete)
-
-print("Complete dashboard routes file created: dashboard_routes_complete.js")
-print("This should be saved as routes/dashboard.js in your backend")
