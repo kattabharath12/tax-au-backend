@@ -9,13 +9,18 @@ const auth = require('../middleware/auth');
 
 const router = express.Router();
 
-// Create uploads directory if it doesn't exist
+// Create uploads directories if they don't exist
 const uploadsDir = path.join(__dirname, '..', 'uploads', 'w9-forms');
+const w2UploadsDir = path.join(__dirname, '..', 'uploads', 'w2-forms');
+
 if (!fs.existsSync(uploadsDir)) {
     fs.mkdirSync(uploadsDir, { recursive: true });
 }
+if (!fs.existsSync(w2UploadsDir)) {
+    fs.mkdirSync(w2UploadsDir, { recursive: true });
+}
 
-// Configure multer for file uploads
+// Configure multer for W-9 file uploads
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
         cb(null, uploadsDir);
@@ -28,6 +33,35 @@ const storage = multer.diskStorage({
 
 const upload = multer({
     storage: storage,
+    limits: {
+        fileSize: 5 * 1024 * 1024 // 5MB limit
+    },
+    fileFilter: function (req, file, cb) {
+        const allowedTypes = /jpeg|jpg|png|pdf|doc|docx/;
+        const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+        const mimetype = allowedTypes.test(file.mimetype);
+
+        if (mimetype && extname) {
+            return cb(null, true);
+        } else {
+            cb(new Error('Only images, PDFs, and Word documents are allowed'));
+        }
+    }
+});
+
+// Configure multer for W-2 file uploads
+const w2Storage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        cb(null, w2UploadsDir);
+    },
+    filename: function (req, file, cb) {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        cb(null, 'w2-' + req.user.userId + '-' + uniqueSuffix + path.extname(file.originalname));
+    }
+});
+
+const uploadW2 = multer({
+    storage: w2Storage,
     limits: {
         fileSize: 5 * 1024 * 1024 // 5MB limit
     },
@@ -67,7 +101,11 @@ router.get('/me', auth, async (req, res) => {
             filingStatus: user.filingStatus,
             dependents: user.dependents,
             w9Uploaded: user.w9Uploaded,
+            w9UploadDate: user.w9UploadDate,
+            w9FileName: user.w9FileName,
             w2Uploaded: user.w2Uploaded,
+            w2UploadDate: user.w2UploadDate,
+            w2FileName: user.w2FileName,
             createdAt: user.createdAt,
             updatedAt: user.updatedAt
         });
@@ -254,7 +292,9 @@ router.post('/upload-w9', auth, upload.single('w9Form'), async (req, res) => {
 
         // Update user's W-9 upload status
         await user.update({
-            w9Uploaded: true
+            w9Uploaded: true,
+            w9UploadDate: new Date(),
+            w9FileName: req.file.filename
         });
 
         res.json({
@@ -266,6 +306,47 @@ router.post('/upload-w9', auth, upload.single('w9Form'), async (req, res) => {
 
     } catch (error) {
         console.error('W-9 upload error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error during file upload'
+        });
+    }
+});
+
+// Upload W-2 form (POST /api/dashboard/upload-w2) - NEW
+router.post('/upload-w2', auth, uploadW2.single('w2Form'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({
+                success: false,
+                message: 'No file uploaded'
+            });
+        }
+
+        const user = await User.findByPk(req.user.userId);
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        // Update user's W-2 upload status
+        await user.update({
+            w2Uploaded: true,
+            w2UploadDate: new Date(),
+            w2FileName: req.file.filename
+        });
+
+        res.json({
+            success: true,
+            message: 'W-2 form uploaded successfully',
+            fileName: req.file.filename,
+            uploadDate: new Date()
+        });
+
+    } catch (error) {
+        console.error('W-2 upload error:', error);
         res.status(500).json({
             success: false,
             message: 'Server error during file upload'
