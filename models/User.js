@@ -5,115 +5,100 @@ const User = sequelize.define('User', {
     id: {
         type: DataTypes.UUID,
         defaultValue: DataTypes.UUIDV4,
-        primaryKey: true
-    },
-    firstName: {
-        type: DataTypes.STRING,
-        allowNull: true
-    },
-    lastName: {
-        type: DataTypes.STRING,
-        allowNull: true
+        primaryKey: true,
     },
     email: {
         type: DataTypes.STRING,
         allowNull: false,
         unique: true,
         validate: {
-            isEmail: true
-        }
+            isEmail: true,
+        },
     },
     password: {
         type: DataTypes.STRING,
-        allowNull: false
+        allowNull: false,
     },
-    lastLogin: {
-        type: DataTypes.DATE,
-        allowNull: true
-    },
-    // Tax Information as JSON fields
-    filingStatus: {
-        type: DataTypes.ENUM('single', 'married_filing_jointly', 'married_filing_separately', 'head_of_household', 'qualifying_widow'),
+    firstName: {
+        type: DataTypes.STRING,
         allowNull: true,
-        defaultValue: 'single'
     },
+    lastName: {
+        type: DataTypes.STRING,
+        allowNull: true,
+    },
+    filingStatus: {
+        type: DataTypes.ENUM('single', 'married-joint', 'married-separate', 'head-of-household', 'qualifying-widow'),
+        allowNull: true,
+    },
+    // W-9 related fields
     taxClassification: {
         type: DataTypes.ENUM('individual', 'sole_proprietor', 'c_corporation', 's_corporation', 'partnership', 'trust_estate', 'llc', 'other'),
         allowNull: true,
-        defaultValue: 'individual'
     },
     businessName: {
         type: DataTypes.STRING,
-        allowNull: true
+        allowNull: true,
     },
     ssn: {
         type: DataTypes.STRING,
-        allowNull: true
+        allowNull: true,
     },
     ein: {
         type: DataTypes.STRING,
-        allowNull: true
+        allowNull: true,
     },
-    // Address as JSON
     address: {
-        type: DataTypes.JSONB,
+        type: DataTypes.JSONB, // Store address as a JSON object
         allowNull: true,
-        defaultValue: {}
+        defaultValue: {} // e.g., { street: '', city: '', state: '', zip: '' }
     },
-    // Income as JSON
     income: {
-        type: DataTypes.JSONB,
+        type: DataTypes.JSONB, // Store income details as a JSON object
         allowNull: true,
-        defaultValue: {
-            wages: 0,
-            selfEmployment: 0,
-            interest: 0,
-            dividends: 0,
-            capitalGains: 0,
-            other: 0
-        }
+        defaultValue: {} // e.g., { w2Wages: 0, otherIncome: 0 }
     },
-    // Deductions as JSON
     deductions: {
-        type: DataTypes.JSONB,
+        type: DataTypes.JSONB, // Store deductions as a JSON object
         allowNull: true,
-        defaultValue: {
-            standardDeduction: true,
-            itemizedDeductions: {
-                mortgageInterest: 0,
-                stateLocalTaxes: 0,
-                charitableContributions: 0,
-                medicalExpenses: 0
-            }
-        }
+        defaultValue: {} // e.g., { studentLoanInterest: 0, medicalExpenses: 0 }
     },
-    // W-9 Upload Status
     w9Uploaded: {
         type: DataTypes.BOOLEAN,
-        defaultValue: false
+        defaultValue: false,
     },
     w9UploadDate: {
         type: DataTypes.DATE,
-        allowNull: true
+        allowNull: true,
     },
     w9FileName: {
         type: DataTypes.STRING,
-        allowNull: true
+        allowNull: true,
     },
-    // Form Completion Status
+    // W-2 related fields (NEW)
+    w2Uploaded: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false,
+    },
+    w2UploadDate: {
+        type: DataTypes.DATE,
+        allowNull: true,
+    },
+    w2FileName: {
+        type: DataTypes.STRING,
+        allowNull: true,
+    },
+    // Form completion status
     formCompletionStatus: {
-        type: DataTypes.ENUM('not_started', 'in_progress', 'completed', 'filed'),
-        defaultValue: 'not_started'
-    }
+        type: DataTypes.ENUM('not_started', 'in_progress', 'completed'),
+        defaultValue: 'not_started',
+    },
+    lastLogin: {
+        type: DataTypes.DATE,
+        allowNull: true,
+    },
 }, {
-    tableName: 'users',
-    timestamps: true, // This adds createdAt and updatedAt
-    indexes: [
-        {
-            unique: true,
-            fields: ['email']
-        }
-    ]
+    timestamps: true,
 });
 
 module.exports = User;
