@@ -1,5 +1,4 @@
-# 1. Updated package.json for backend
-backend_package_railway = {
+ {
     "name": "tax-filing-backend",
     "version": "1.0.0",
     "description": "Backend for Auto Tax Filing Application",
