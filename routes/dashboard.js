@@ -674,15 +674,6 @@ router.get('/1098-data', auth, async (req, res) => {
     }
 });
 
-     catch (error) {
-        console.error('Get 1098 data error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Server error retrieving 1098 data'
-        });
-    }
-});
-
 // Update 1098 data (PUT /api/dashboard/1098-data) - NEW
 router.put('/1098-data', auth, [
     body('mortgageInterestReceived').optional().isNumeric(),
