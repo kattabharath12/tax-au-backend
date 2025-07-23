@@ -647,18 +647,11 @@ router.post('/generate-1098', auth, async (req, res) => {
     }
 });
 
-// Get 1098 data (GET /api/dashboard/1098-data) - NEW
+// Get 1098 data (GET /api/dashboard/1098-data) - UPDATED
 router.get('/1098-data', auth, async (req, res) => {
     try {
-        const user = await User.findByPk(req.user.userId);
-        if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: 'User not found'
-            });
-        }
-
-        const form1098 = user.deductions?.form1098;
+        const form1098 = await Form1098.findOne({ where: { userId: req.user.id } });
+        
         if (!form1098) {
             return res.status(404).json({
                 success: false,
@@ -669,8 +662,17 @@ router.get('/1098-data', auth, async (req, res) => {
         res.json({
             success: true,
             data: form1098,
-            lastGeneration: user.deductions?.last1098Generation
+            lastGeneration: form1098.generatedDate
         });
+
+    } catch (error) {
+        console.error('Get 1098 data error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error'
+        });
+    }
+});
 
     } catch (error) {
         console.error('Get 1098 data error:', error);
@@ -818,7 +820,7 @@ router.get('/download-1098', auth, async (req, res) => {
 
         // Footer
         doc.fontSize(10);
-        doc.text(`Generated on: ${form1098.generatedDate.toLocaleDateString()}`, { align: 'right' });
+        doc.text(`Generated on: ${new Date(form1098.generatedDate).toLocaleDateString()}`, { align: 'right' });
         doc.text('This is a computer-generated document.', { align: 'center' });
 
         // Calculation details (if needed for debugging)
