@@ -107,9 +107,9 @@ router.post('/login', [
         // Update last login
         await user.update({ lastLogin: new Date() });
 
-        // Generate JWT token
+        // Generate JWT token with proper structure
         const token = jwt.sign(
-            { userId: user.id, email: user.email },
+            { user: { id: user.id, email: user.email } },
             process.env.JWT_SECRET,
             { expiresIn: '7d' }
         );
@@ -138,7 +138,7 @@ router.post('/login', [
 // Get user profile (protected route)
 router.get('/profile', auth, async (req, res) => {
     try {
-        const user = await User.findByPk(req.user.userId, {
+        const user = await User.findByPk(req.user.id, {
             attributes: { exclude: ['password'] }
         });
 
