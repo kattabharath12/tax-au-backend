@@ -1,77 +1,25 @@
 const jwt = require('jsonwebtoken');
-const User = require('../models/User');
 
-const auth = async (req, res, next) => {
+module.exports = function (req, res, next) {
+    // Get token from header
+    const token = req.header('Authorization')?.replace('Bearer ', '');
+
+    // Check if not token
+    if (!token) {
+        return res.status(401).json({ message: 'No token, authorization denied' });
+    }
+
+    // Verify token
     try {
-        // Get token from header
-        const token = req.header('Authorization');
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_jwt_secret');
 
-        if (!token) {
-            return res.status(401).json({
-                success: false,
-                message: 'No token provided, authorization denied'
-            });
-        }
-
-        // Check if token starts with 'Bearer '
-        let actualToken = token;
-        if (token.startsWith('Bearer ')) {
-            actualToken = token.slice(7);
-        }
-
-        if (!actualToken) {
-            return res.status(401).json({
-                success: false,
-                message: 'Invalid token format'
-            });
-        }
-
-        // Verify token
-        const decoded = jwt.verify(actualToken, process.env.JWT_SECRET);
-
-        // Check if user still exists
-        const user = await User.findByPk(decoded.userId, {
-            attributes: { exclude: ['password'] }
-        });
-
-        if (!user) {
-            return res.status(401).json({
-                success: false,
-                message: 'User not found, token invalid'
-            });
-        }
-
-        // Add user info to request object
-        req.user = {
-            userId: decoded.userId,
-            email: user.email,
-            firstName: user.firstName,
-            lastName: user.lastName
-        };
+        // Set req.user to the user object from JWT payload
+        // JWT payload is now { user: { id: ..., email: ... } }
+        req.user = decoded.user;
 
         next();
-    } catch (error) {
-        console.error('Auth middleware error:', error);
-
-        if (error.name === 'JsonWebTokenError') {
-            return res.status(401).json({
-                success: false,
-                message: 'Invalid token'
-            });
-        }
-
-        if (error.name === 'TokenExpiredError') {
-            return res.status(401).json({
-                success: false,
-                message: 'Token expired'
-            });
-        }
-
-        res.status(500).json({
-            success: false,
-            message: 'Server error in authentication'
-        });
+    } catch (err) {
+        console.error('JWT verification error:', err);
+        res.status(401).json({ message: 'Token is not valid' });
     }
 };
-
-module.exports = auth;
