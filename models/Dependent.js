@@ -1,30 +1,35 @@
 const { DataTypes } = require('sequelize');
-const sequelize = require('../config/database');
+const { sequelize } = require('../database');
 
 const Dependent = sequelize.define('Dependent', {
     id: {
-        type: DataTypes.INTEGER,
-        primaryKey: true,
-        autoIncrement: true
+        type: DataTypes.UUID,
+        defaultValue: DataTypes.UUIDV4,
+        primaryKey: true
     },
     userId: {
-        type: DataTypes.INTEGER,
+        type: DataTypes.UUID,
         allowNull: false,
         references: {
             model: 'users',
             key: 'id'
-        }
+        },
+        onDelete: 'CASCADE'
     },
     name: {
         type: DataTypes.STRING,
         allowNull: false
     },
     relationship: {
-        type: DataTypes.ENUM('child', 'spouse', 'parent', 'other'),
+        type: DataTypes.STRING,
         allowNull: false
     },
-    dob: {
-        type: DataTypes.DATEONLY,
+    ssn: {
+        type: DataTypes.STRING,
+        allowNull: true
+    },
+    birthDate: {
+        type: DataTypes.DATE,
         allowNull: true
     }
 }, {
