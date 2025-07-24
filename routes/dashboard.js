@@ -8,7 +8,7 @@ const pdfParse = require('pdf-parse');
 const PDFDocument = require('pdfkit');
 const User = require('../models/User');
 const Dependent = require('../models/Dependent');
-const auth = require('../middleware/auth_middleware');
+const auth = require('../middleware/auth');
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
